@@ -22,5 +22,6 @@ func (app *application) routes() http.Handler {
 	// Require a PATCH request, rather than PUT.
 	router.HandlerFunc(http.MethodPatch, "/v1/movies/:id", app.updateMovieHandler)
 	router.HandlerFunc(http.MethodDelete, "/v1/movies/:id", app.deleteMovieHandler)
-	return app.recoverPanic(router)
+	// Wrap the router with the rateLimit() middleware.
+	return app.recoverPanic(app.rateLimit(router))
 }

@@ -174,36 +174,32 @@ func ValidateMovie(v *validator.Validator, movie *Movie) {
 	v.Check(validator.Unique(movie.Genres), "genres", "must not contain duplicate values")
 }
 
-func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, error) {
-	// Construct the SQL query to retrieve all movie records.
+// Update the function signature to return a Metadata struct.
+func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*Movie, Metadata, error) { // Update the SQL query to include the window function which counts the total
+	// (filtered) records.
 	query := fmt.Sprintf(`
-SELECT id, created_at, title, year, runtime, genres, version
-FROM movies
-WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '')
-AND (genres @> $2 OR $2 = '{}')
-ORDER BY %s %s, id ASC`, filters.sortColumn(), filters.sortDirection())
+	SELECT count(*) OVER(), id, created_at, title, year, runtime, genres, version
+	FROM movies
+	WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '')
+	AND (genres @> $2 OR $2 = '{}')
+	ORDER BY %s %s, id ASC
+	LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
 
-	// Create a context with a 3-second timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
-	// Pass the title and genres as the placeholder parameter values.
-	rows, err := m.DB.QueryContext(ctx, query, title, pq.Array(genres))
+	args := []any{title, pq.Array(genres), filters.limit(), filters.offset()}
+	rows, err := m.DB.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, Metadata{}, err // Update this to return an empty Metadata struct.
 	}
-	// Importantly, defer a call to rows.Close() to ensure that the resultset is closed
-	// before GetAll() returns.
 	defer rows.Close()
-	// Initialize an empty slice to hold the movie data.
+	// Declare a totalRecords variable.
+	totalRecords := 0
 	movies := []*Movie{}
-	// Use rows.Next to iterate through the rows in the resultset.
 	for rows.Next() {
-		// Initialize an empty Movie struct to hold the data for an individual movie.
 		var movie Movie
-		// Scan the values from the row into the Movie struct. Again, note that we're
-		// using the pq.Array() adapter on the genres field here.
 		err := rows.Scan(
+			&totalRecords, // Scan the count from the window function into totalRecords.
 			&movie.ID,
 			&movie.CreatedAt,
 			&movie.Title,
@@ -213,16 +209,16 @@ ORDER BY %s %s, id ASC`, filters.sortColumn(), filters.sortDirection())
 			&movie.Version,
 		)
 		if err != nil {
-			return nil, err
+			return nil, Metadata{}, err // Update this to return an empty Metadata struct.
 		}
-		// Add the Movie struct to the slice.
 		movies = append(movies, &movie)
 	}
-	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
-	// that was encountered during the iteration.
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, Metadata{}, err // Update this to return an empty Metadata struct.
 	}
-	// If everything went OK, then return the slice of movies.
-	return movies, nil
+	// Generate a Metadata struct, passing in the total record count and pagination
+	// parameters from the client.
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+	// Include the metadata struct when returning.
+	return movies, metadata, nil
 }
