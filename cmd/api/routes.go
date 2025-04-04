@@ -32,4 +32,3 @@ func (app *application) routes() http.Handler {
 	return app.recoverPanic(app.rateLimit(app.authenticate(router)))
 }
 
-JS7FOX7EFVJJ5NQSBB2TPHZV6U
