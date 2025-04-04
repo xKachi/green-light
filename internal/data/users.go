@@ -20,14 +20,16 @@ var (
 // using the json:"-" struct tag to prevent the Password and Version fields appearing in
 // any output when we encode it to JSON. Also notice that the Password field uses the
 // custom password type defined below.
+var AnonymousUser = &User{}
+
 type User struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
-	Password  password  `json:"-"`
-	Activated bool      `json:"activated"`
-	Version   int       `json:"-"`
+	Password  password  `json:"activated"`
+	Activated bool      `json:"-"`
+	Version int `json:"-"`
 }
 
 // Create a custom password type which is a struct containing the plaintext and hashed
@@ -37,6 +39,11 @@ type User struct {
 type password struct {
 	plaintext *string
 	hash      []byte
+}
+
+// Check if a User instance is the AnonymousUser.
+func (u *User) IsAnonymous() bool {
+	return u == AnonymousUser
 }
 
 // The Set() method calculates the bcrypt hash of a plaintext password, and stores both

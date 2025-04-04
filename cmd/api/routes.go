@@ -25,6 +25,11 @@ func (app *application) routes() http.Handler {
 	// Add the route for the POST /v1/users endpoint.
 	router.HandlerFunc(http.MethodPost, "/v1/users", app.registerUserHandler)
 	// Wrap the router with the rateLimit() middleware.
+	// Add the route for the POST /v1/tokens/authentication endpoint.
+	router.HandlerFunc(http.MethodPost, "/v1/tokens/authentication", app.createAuthenticationTokenHandler)
 	router.HandlerFunc(http.MethodPut, "/v1/users/activated", app.activateUserHandler)
-	return app.recoverPanic(app.rateLimit(router))
+
+	return app.recoverPanic(app.rateLimit(app.authenticate(router)))
 }
+
+JS7FOX7EFVJJ5NQSBB2TPHZV6U
