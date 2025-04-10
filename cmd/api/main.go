@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"expvar"
 	"flag"
 	"log/slog"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +49,10 @@ type config struct {
 		password string
 		sender   string
 	}
+
+	cors struct {
+		trustedOrigins []string
+	}
 }
 
 // Define an application struct to hold the dependencies for our HTTP handlers, helpers,
@@ -84,7 +91,16 @@ func main() {
 	flag.StringVar(&cfg.smtp.password, "smtp-password", "e927d35a3a49d5", "SMTP password")
 	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "Greenlight <no-reply@greenlight.alexedwards.net>", "SMTP sender")
 
-	flag.Parse()
+	// Use the flag.Func() function to process the -cors-trusted-origins command line
+	// flag. In this we use the strings.Fields() function to split the flag value into a
+	// slice based on whitespace characters and assign it to our config struct.
+	// Importantly, if the -cors-trusted-origins flag is not present, contains the empty
+	// string, or contains only whitespace, then strings.Fields() will return an empty
+	// []string slice.
+	flag.Func("cors-trusted-origins", "Trusted CORS origins (space separated)", func(val string) error {
+		cfg.cors.trustedOrigins = strings.Fields(val)
+		return nil
+	})
 
 	flag.Parse()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -103,7 +119,23 @@ func main() {
 	defer db.Close()
 	// Also log a message to say that the connection pool has been successfully
 	// established.
+
 	logger.Info("database connection pool established")
+
+	expvar.NewString("version").Set(version)
+	// Publish the number of active goroutines.
+	expvar.Publish("goroutines", expvar.Func(func() any {
+		return runtime.NumGoroutine()
+	}))
+	// Publish the database connection pool statistics.
+	expvar.Publish("database", expvar.Func(func() any {
+		return db.Stats()
+	}))
+	// Publish the current Unix timestamp.
+	expvar.Publish("timestamp", expvar.Func(func() any {
+		return time.Now().Unix()
+	}))
+
 	app := &application{
 		config: cfg,
 		logger: logger,
@@ -117,6 +149,7 @@ func main() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+
 }
 
 // The openDB() function returns a sql.DB connection pool.
