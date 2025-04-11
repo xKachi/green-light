@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"expvar"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"runtime"
@@ -15,12 +16,12 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/xKachi/green-light/internal/data"
 	"github.com/xKachi/green-light/internal/mailer"
+	"github.com/xKachi/green-light/internal/vcs"
 )
 
-// Declare a string containing the application version number. Later in the book we'll
-// generate this automatically at build time, but for now we'll just store the version
-// number as a hard-coded global constant.
-const version = "1.0.0"
+var (
+	version = vcs.Version()
+)
 
 // Define a config struct to hold all the configuration settings for our application.
 // For now, the only configuration settings will be the network port that we want the
@@ -70,7 +71,9 @@ func main() {
 	var cfg config
 	flag.IntVar(&cfg.port, "port", 4000, "API server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
-	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("GREENLIGHT_DB_DSN"), "PostgreSQL DSN")
+	// Use the empty string "" as the default value for the db-dsn command-line flag,
+	// rather than os.Getenv("GREENLIGHT_DB_DSN") like we were previously.
+	flag.StringVar(&cfg.db.dsn, "db-dsn", "", "PostgreSQL DSN")
 	// Read the connection pool settings from command-line flags into the config struct.
 	// Notice that the default values we're using are the ones we discussed above?
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
@@ -101,6 +104,16 @@ func main() {
 		cfg.cors.trustedOrigins = strings.Fields(val)
 		return nil
 	})
+
+	// Create a new version boolean flag with the default value of false.
+	displayVersion := flag.Bool("version", false, "Display version and exit")
+	flag.Parse()
+	// If the version flag value is true, then print out the version number and
+	// immediately exit.
+	if *displayVersion {
+		fmt.Printf("Version:\t%s\n", version)
+		os.Exit(0)
+	}
 
 	flag.Parse()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
